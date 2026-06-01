@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 
+// Client-side delay in fast mode — widens the race window so concurrent
+// audience members are more likely to have their requests overlap on the server.
+const PRE_FLIGHT_DELAY_MS = 600;
+
 const ADJECTIVES = ["Swift", "Bold", "Eager", "Quick", "Sharp", "Brave", "Calm", "Wild", "Keen"];
 const NOUNS = ["Panda", "Tiger", "Eagle", "Wolf", "Fox", "Bear", "Hawk", "Lynx", "Deer"];
 
@@ -13,18 +17,23 @@ function makeCustomerId(): string {
   return `${adj} ${noun} #${num}`;
 }
 
+type BuyPhase = "idle" | "checking" | "processing";
+
 export function CustomerView() {
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [result, setResult] = useState<{ success: boolean; reason?: string; mode: string } | null>(null);
+  const [result, setResult] = useState<{ success: boolean; reason?: string } | null>(null);
+  const [buyPhase, setBuyPhase] = useState<BuyPhase>("idle");
 
   const { data } = api.inventory.getStock.useQuery(undefined, {
     refetchInterval: 2000,
   });
 
   const buyMut = api.inventory.buy.useMutation({
-    onSuccess: (data) => {
-      setResult({ success: data.success, reason: data.reason, mode: "?" });
+    onSuccess: (res) => {
+      setBuyPhase("idle");
+      setResult({ success: res.success, reason: res.reason });
     },
+    onError: () => setBuyPhase("idle"),
   });
 
   useEffect(() => {
@@ -42,11 +51,18 @@ export function CustomerView() {
   const mode = data?.mode ?? "safe";
   const name = data?.name ?? "Concert Ticket";
   const isOversold = stock < 0;
-  const isBuying = buyMut.isPending;
+  const isBusy = buyPhase !== "idle";
 
-  const handleBuy = () => {
-    if (!customerId || isBuying) return;
+  const handleBuy = async () => {
+    if (!customerId || isBusy) return;
     setResult(null);
+
+    // Pre-flight delay: hold here so concurrent audience members can also click
+    // before any request hits the server, maximising overlap on both modes.
+    setBuyPhase("checking");
+    await new Promise((r) => setTimeout(r, PRE_FLIGHT_DELAY_MS));
+
+    setBuyPhase("processing");
     buyMut.mutate({ customerId });
   };
 
@@ -130,10 +146,14 @@ export function CustomerView() {
         {/* Buy button */}
         <button
           onClick={handleBuy}
-          disabled={isBuying}
+          disabled={isBusy}
           className="w-full rounded-xl bg-indigo-600 py-6 text-2xl font-bold transition-all hover:bg-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isBuying ? "⏳ Buying..." : "Buy Now"}
+          {buyPhase === "checking"
+            ? "🔍 Checking stock..."
+            : buyPhase === "processing"
+              ? "⏳ Processing..."
+              : "Buy Now"}
         </button>
 
         {/* Customer identity */}
