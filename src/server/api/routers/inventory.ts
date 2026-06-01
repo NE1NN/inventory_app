@@ -9,7 +9,7 @@ export const inventoryRouter = createTRPCRouter({
     return {
       stock: item?.stock ?? 0,
       name: item?.name ?? "Concert Ticket",
-      mode: (item?.mode ?? "safe") as "fast" | "safe",
+      mode: (item?.mode ?? "safe") as "fast" | "safe" | "lock",
     };
   }),
 
@@ -29,7 +29,7 @@ export const inventoryRouter = createTRPCRouter({
         return { success: false, customerId: input.customerId, reason: "No item found" };
       }
 
-      const mode = item.mode as "fast" | "safe";
+      const mode = item.mode as "fast" | "safe" | "lock";
       let success = false;
       let reason: string | undefined;
 
@@ -45,7 +45,7 @@ export const inventoryRouter = createTRPCRouter({
           });
           success = true;
         }
-      } else {
+      } else if (mode === "safe") {
         // Single atomic UPDATE WHERE stock > 0 — no race window.
         const affected = await ctx.db.$executeRaw`
           UPDATE "Item"
@@ -54,6 +54,27 @@ export const inventoryRouter = createTRPCRouter({
         `;
         success = affected > 0;
         if (!success) reason = "Out of stock";
+      } else {
+        // Pessimistic lock: SELECT FOR UPDATE holds an exclusive row lock for the
+        // entire transaction. Concurrent requests block at the SELECT and queue —
+        // they only run after the current transaction commits.
+        await ctx.db.$transaction(async (tx) => {
+          const rows = await tx.$queryRaw<{ id: number; stock: number }[]>`
+            SELECT id, stock FROM "Item" WHERE id = ${item.id} FOR UPDATE
+          `;
+          const locked = rows[0];
+          if (!locked || locked.stock <= 0) {
+            reason = "Out of stock";
+            return;
+          }
+          // Sleep while holding the lock — the queue effect is visible here.
+          await sleep(800);
+          await tx.item.update({
+            where: { id: locked.id },
+            data: { stock: { decrement: 1 } },
+          });
+          success = true;
+        });
       }
 
       await ctx.db.purchase.create({
@@ -64,7 +85,7 @@ export const inventoryRouter = createTRPCRouter({
     }),
 
   setMode: publicProcedureRaw
-    .input(z.object({ mode: z.enum(["fast", "safe"]) }))
+    .input(z.object({ mode: z.enum(["fast", "safe", "lock"]) }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.item.upsert({
         where: { id: 1 },

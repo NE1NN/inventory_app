@@ -74,15 +74,19 @@ export function CustomerView() {
           className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 ${
             mode === "fast"
               ? "bg-orange-500/20 text-orange-300 ring-orange-500/40"
-              : "bg-emerald-500/20 text-emerald-300 ring-emerald-500/40"
+              : mode === "lock"
+                ? "bg-violet-500/20 text-violet-300 ring-violet-500/40"
+                : "bg-emerald-500/20 text-emerald-300 ring-emerald-500/40"
           }`}
         >
-          {mode === "fast" ? "⚡ Fast Mode" : "🔒 Safe Mode"}
+          {mode === "fast" ? "⚡ Fast Mode" : mode === "lock" ? "🔐 Lock Mode" : "🔒 Safe Mode"}
         </span>
         <p className="mt-2 text-center text-xs text-gray-600">
           {mode === "fast"
             ? "Race condition active — multiple buyers may succeed"
-            : "Atomic guarantee — only one buyer will succeed"}
+            : mode === "lock"
+              ? "Exclusive lock — requests queue, only one wins"
+              : "Atomic guarantee — only one buyer will succeed"}
         </p>
       </div>
 

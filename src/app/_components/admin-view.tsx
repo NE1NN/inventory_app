@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 
+type Mode = "fast" | "safe" | "lock";
+
 export function AdminView() {
   const [resetStock, setResetStock] = useState(1);
   const [customerUrl, setCustomerUrl] = useState("");
@@ -33,7 +35,7 @@ export function AdminView() {
   });
 
   const stock = stockData?.stock ?? 0;
-  const mode = stockData?.mode ?? "safe";
+  const mode: Mode = stockData?.mode ?? "safe";
   const isOversold = stock < 0;
 
   const successCount = purchases?.filter((p) => p.success).length ?? 0;
@@ -74,30 +76,30 @@ export function AdminView() {
               Active Mode
             </div>
             <div className="flex rounded-xl bg-gray-800 p-1">
-              <button
+              <ModeButton
+                label="⚡ Fast"
+                sub="May oversell"
+                active={mode === "fast"}
+                activeClass="bg-orange-500"
                 onClick={() => setModeMut.mutate({ mode: "fast" })}
                 disabled={setModeMut.isPending}
-                className={`flex-1 rounded-lg py-3 text-sm font-bold transition-all ${
-                  mode === "fast"
-                    ? "bg-orange-500 text-white shadow-lg"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                ⚡ Fast
-                <div className="mt-0.5 text-xs font-normal opacity-75">May oversell</div>
-              </button>
-              <button
+              />
+              <ModeButton
+                label="🔒 Safe"
+                sub="Atomic UPDATE"
+                active={mode === "safe"}
+                activeClass="bg-emerald-500"
                 onClick={() => setModeMut.mutate({ mode: "safe" })}
                 disabled={setModeMut.isPending}
-                className={`flex-1 rounded-lg py-3 text-sm font-bold transition-all ${
-                  mode === "safe"
-                    ? "bg-emerald-500 text-white shadow-lg"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                🔒 Safe
-                <div className="mt-0.5 text-xs font-normal opacity-75">Atomic guarantee</div>
-              </button>
+              />
+              <ModeButton
+                label="🔐 Lock"
+                sub="SELECT FOR UPDATE"
+                active={mode === "lock"}
+                activeClass="bg-violet-500"
+                onClick={() => setModeMut.mutate({ mode: "lock" })}
+                disabled={setModeMut.isPending}
+              />
             </div>
           </div>
 
@@ -160,7 +162,7 @@ export function AdminView() {
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
             Consistency vs Availability — what each mode trades
           </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <TradeoffCard
               title="⚡ Fast Mode"
               titleColor="text-orange-400"
@@ -170,12 +172,12 @@ export function AdminView() {
                 { label: "Response Speed", value: 5, color: "orange" },
                 { label: "Data Integrity", value: 1, color: "orange" },
               ]}
-              tag="Availability-first"
+              tag="No locking"
               tagColor="bg-orange-900/50 text-orange-400"
-              code={`read  stock = 1   ← User A
-  ···delay···   ← User B also reads 1
-write stock - 1  ← both write → -1`}
-              explanation="Both users read stock before either writes. Both pass the check, both decrement. Stock goes negative — oversell."
+              code={`read  stock = 1  ← A
+  ···delay···  ← B reads 1
+write stock-1  ← both → -1`}
+              explanation="No coordination. Both requests read before either writes. Both pass the check and decrement — stock goes negative."
             />
             <TradeoffCard
               title="🔒 Safe Mode"
@@ -186,13 +188,31 @@ write stock - 1  ← both write → -1`}
                 { label: "Response Speed", value: 4, color: "emerald" },
                 { label: "Data Integrity", value: 5, color: "emerald" },
               ]}
-              tag="Consistency-first"
+              tag="Implicit lock"
               tagColor="bg-emerald-900/50 text-emerald-400"
               code={`UPDATE item
-  SET stock = stock - 1
-  WHERE stock > 0   ← atomic
--- only 1 row matches`}
-              explanation="Single SQL statement. The DB guarantees only one user's UPDATE matches. Second user gets 0 rows → rejected."
+  SET stock = stock-1
+  WHERE stock > 0
+-- DB row lock, 1 stmt`}
+              explanation="Single atomic SQL statement. The DB acquires a row lock for just the UPDATE. Second request finds stock = 0 — rejected."
+            />
+            <TradeoffCard
+              title="🔐 Lock Mode"
+              titleColor="text-violet-400"
+              borderColor={mode === "lock" ? "border-violet-500" : "border-gray-800"}
+              bgColor={mode === "lock" ? "bg-violet-950/20" : "bg-gray-900"}
+              metrics={[
+                { label: "Response Speed", value: 3, color: "violet" },
+                { label: "Data Integrity", value: 5, color: "violet" },
+              ]}
+              tag="Explicit lock"
+              tagColor="bg-violet-900/50 text-violet-400"
+              code={`SELECT * FROM item
+  FOR UPDATE  ← lock
+  ...delay...
+UPDATE stock-1
+COMMIT        ← unlock`}
+              explanation="Exclusive row lock held for the entire transaction. Concurrent requests block at SELECT FOR UPDATE and queue — they run serially."
             />
           </div>
         </div>
@@ -230,10 +250,14 @@ write stock - 1  ← both write → -1`}
                   <span className="min-w-0 truncate text-gray-300">{p.customerId}</span>
                   <span
                     className={`shrink-0 text-xs ${
-                      p.mode === "fast" ? "text-orange-400" : "text-emerald-400"
+                      p.mode === "fast"
+                        ? "text-orange-400"
+                        : p.mode === "lock"
+                          ? "text-violet-400"
+                          : "text-emerald-400"
                     }`}
                   >
-                    {p.mode === "fast" ? "⚡ fast" : "🔒 safe"}
+                    {p.mode === "fast" ? "⚡ fast" : p.mode === "lock" ? "🔐 lock" : "🔒 safe"}
                   </span>
                   <span className="ml-auto shrink-0 text-xs text-gray-600">
                     {new Date(p.createdAt).toLocaleTimeString()}
@@ -245,6 +269,35 @@ write stock - 1  ← both write → -1`}
         </div>
       </div>
     </div>
+  );
+}
+
+function ModeButton({
+  label,
+  sub,
+  active,
+  activeClass,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  sub: string;
+  active: boolean;
+  activeClass: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex-1 rounded-lg py-3 text-sm font-bold transition-all ${
+        active ? `${activeClass} text-white shadow-lg` : "text-gray-400 hover:text-white"
+      }`}
+    >
+      {label}
+      <div className="mt-0.5 text-xs font-normal opacity-75">{sub}</div>
+    </button>
   );
 }
 
@@ -263,7 +316,7 @@ function TradeoffCard({
   titleColor: string;
   borderColor: string;
   bgColor: string;
-  metrics: { label: string; value: number; color: "orange" | "emerald" }[];
+  metrics: { label: string; value: number; color: "orange" | "emerald" | "violet" }[];
   tag: string;
   tagColor: string;
   code: string;
@@ -297,8 +350,10 @@ function MetricBar({
   label: string;
   value: number;
   max: number;
-  color: "orange" | "emerald";
+  color: "orange" | "emerald" | "violet";
 }) {
+  const colorClass =
+    color === "orange" ? "bg-orange-500" : color === "violet" ? "bg-violet-500" : "bg-emerald-500";
   return (
     <div>
       <div className="mb-1 flex justify-between text-xs text-gray-500">
@@ -309,13 +364,7 @@ function MetricBar({
         {Array.from({ length: max }).map((_, i) => (
           <div
             key={i}
-            className={`h-2 flex-1 rounded-full transition-all ${
-              i < value
-                ? color === "orange"
-                  ? "bg-orange-500"
-                  : "bg-emerald-500"
-                : "bg-gray-700"
-            }`}
+            className={`h-2 flex-1 rounded-full transition-all ${i < value ? colorClass : "bg-gray-700"}`}
           />
         ))}
       </div>
