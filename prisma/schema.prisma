@@ -24,4 +24,14 @@ model Item {
     id    Int    @id @default(autoincrement())
     name  String @default("Concert Ticket")
     stock Int    @default(1)
+    mode  String @default("safe")
+}
+
+model Purchase {
+    id         Int      @id @default(autoincrement())
+    customerId String
+    success    Boolean
+    reason     String?
+    mode       String
+    createdAt  DateTime @default(now())
 }

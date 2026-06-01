@@ -1,5 +1,5 @@
-import { InventoryDemo } from "@/app/_components/inventory-demo";
+import { CustomerView } from "@/app/_components/customer-view";
 
 export default function Home() {
-  return <InventoryDemo />;
+  return <CustomerView />;
 }
