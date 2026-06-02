@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/trpc/react";
 
 const PRE_FLIGHT_DELAY_MS = 600;
@@ -22,8 +22,11 @@ type BookPhase = "idle" | "checking" | "processing";
 
 export function CustomerView() {
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [result, setResult] = useState<{ success: boolean; reason?: string } | null>(null);
+  const [result, setResult] = useState<{ success: boolean; reason?: string; latencyMs: number } | null>(null);
   const [bookPhase, setBookPhase] = useState<BookPhase>("idle");
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data } = api.inventory.getSeat.useQuery(undefined, {
     refetchInterval: 2000,
@@ -31,10 +34,15 @@ export function CustomerView() {
 
   const bookMut = api.inventory.book.useMutation({
     onSuccess: (res) => {
+      const latencyMs = startRef.current !== null ? Date.now() - startRef.current : 0;
+      if (timerRef.current) clearInterval(timerRef.current);
       setBookPhase("idle");
-      setResult({ success: res.success, reason: res.reason });
+      setResult({ success: res.success, reason: res.reason, latencyMs });
     },
-    onError: () => setBookPhase("idle"),
+    onError: () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setBookPhase("idle");
+    },
   });
 
   useEffect(() => {
@@ -63,6 +71,11 @@ export function CustomerView() {
     await new Promise((r) => setTimeout(r, PRE_FLIGHT_DELAY_MS));
 
     setBookPhase("processing");
+    const now = Date.now();
+    startRef.current = now;
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - now), 50);
+    timerRef.current = id;
     bookMut.mutate({ customerId });
   };
 
@@ -197,6 +210,9 @@ export function CustomerView() {
                 )}
               </>
             )}
+            <div className="mt-3 font-mono text-xs text-gray-500">
+              {(result.latencyMs / 1000).toFixed(2)}s
+            </div>
           </div>
         )}
 
@@ -211,7 +227,7 @@ export function CustomerView() {
           {bookPhase === "checking"
             ? "🔍 Checking availability..."
             : bookPhase === "processing"
-              ? "⏳ Booking seat..."
+              ? `⏳ ${(elapsedMs / 1000).toFixed(1)}s`
               : isAvailable
                 ? `Book Seat ${seatLabel}`
                 : "Seat Taken"}
