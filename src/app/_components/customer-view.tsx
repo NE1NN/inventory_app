@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 
-// Client-side delay in fast mode — widens the race window so concurrent
-// audience members are more likely to have their requests overlap on the server.
 const PRE_FLIGHT_DELAY_MS = 600;
 
 const ADJECTIVES = ["Swift", "Bold", "Eager", "Quick", "Sharp", "Brave", "Calm", "Wild", "Keen"];
@@ -17,23 +15,26 @@ function makeCustomerId(): string {
   return `${adj} ${noun} #${num}`;
 }
 
-type BuyPhase = "idle" | "checking" | "processing";
+const ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const COLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+type BookPhase = "idle" | "checking" | "processing";
 
 export function CustomerView() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [result, setResult] = useState<{ success: boolean; reason?: string } | null>(null);
-  const [buyPhase, setBuyPhase] = useState<BuyPhase>("idle");
+  const [bookPhase, setBookPhase] = useState<BookPhase>("idle");
 
-  const { data } = api.inventory.getStock.useQuery(undefined, {
+  const { data } = api.inventory.getSeat.useQuery(undefined, {
     refetchInterval: 2000,
   });
 
-  const buyMut = api.inventory.buy.useMutation({
+  const bookMut = api.inventory.book.useMutation({
     onSuccess: (res) => {
-      setBuyPhase("idle");
+      setBookPhase("idle");
       setResult({ success: res.success, reason: res.reason });
     },
-    onError: () => setBuyPhase("idle"),
+    onError: () => setBookPhase("idle"),
   });
 
   useEffect(() => {
@@ -47,31 +48,30 @@ export function CustomerView() {
     }
   }, []);
 
-  const stock = data?.stock ?? 0;
+  const seatLabel = data?.label ?? "E5";
+  const seatRow = data?.row ?? "E";
+  const seatCol = data?.col ?? 5;
+  const isAvailable = data?.isAvailable ?? true;
   const mode = data?.mode ?? "safe";
-  const name = data?.name ?? "Concert Ticket";
-  const isOversold = stock < 0;
-  const isBusy = buyPhase !== "idle";
+  const isBusy = bookPhase !== "idle";
 
-  const handleBuy = async () => {
-    if (!customerId || isBusy) return;
+  const handleBook = async () => {
+    if (!customerId || isBusy || !isAvailable) return;
     setResult(null);
 
-    // Pre-flight delay: hold here so concurrent audience members can also click
-    // before any request hits the server, maximising overlap on both modes.
-    setBuyPhase("checking");
+    setBookPhase("checking");
     await new Promise((r) => setTimeout(r, PRE_FLIGHT_DELAY_MS));
 
-    setBuyPhase("processing");
-    buyMut.mutate({ customerId });
+    setBookPhase("processing");
+    bookMut.mutate({ customerId });
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-950 px-6 py-10 text-white">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-950 px-4 py-8 text-white">
       {/* Mode badge */}
-      <div className="mb-8">
+      <div className="mb-6 text-center">
         <span
-          className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 ${
+          className={`rounded-full px-4 py-1.5 text-sm font-semibold ring-1 ${
             mode === "fast"
               ? "bg-orange-500/20 text-orange-300 ring-orange-500/40"
               : mode === "lock"
@@ -81,7 +81,7 @@ export function CustomerView() {
         >
           {mode === "fast" ? "⚡ Fast Mode" : mode === "lock" ? "🔐 Lock Mode" : "🔒 Safe Mode"}
         </span>
-        <p className="mt-2 text-center text-xs text-gray-600">
+        <p className="mt-1.5 text-xs text-gray-600">
           {mode === "fast"
             ? "Race condition active — multiple buyers may succeed"
             : mode === "lock"
@@ -91,31 +91,82 @@ export function CustomerView() {
       </div>
 
       <div className="w-full max-w-sm space-y-5">
-        {/* Product card */}
-        <div className="rounded-2xl border-2 border-gray-800 bg-gray-900 p-8 text-center">
-          <div className="mb-3 text-7xl">🎫</div>
-          <h2 className="text-2xl font-bold">{name}</h2>
-          <div className="mt-4">
-            {isOversold ? (
-              <span className="rounded-full bg-red-950 px-4 py-1.5 text-sm font-semibold text-red-400">
-                ⚠️ Oversold ({stock})
-              </span>
-            ) : stock > 0 ? (
-              <span className="rounded-full bg-emerald-950 px-4 py-1.5 text-sm font-semibold text-emerald-400">
-                ✓ In Stock — {stock} left
-              </span>
-            ) : (
-              <span className="rounded-full bg-gray-800 px-4 py-1.5 text-sm font-semibold text-gray-500">
-                Sold Out
-              </span>
-            )}
+        {/* Cinema */}
+        <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">
+          {/* Screen */}
+          <div className="mb-5">
+            <div className="h-1.5 rounded-full bg-linear-to-r from-transparent via-indigo-400/60 to-transparent" />
+            <p className="mt-1.5 text-center text-xs font-semibold uppercase tracking-widest text-gray-600">
+              Screen
+            </p>
+          </div>
+
+          {/* Seat grid */}
+          <div className="space-y-1.5">
+            {ROWS.map((row) => (
+              <div key={row} className="flex items-center gap-1.5">
+                <span className="w-3 shrink-0 text-center text-xs text-gray-700">{row}</span>
+                <div className="flex flex-1 justify-center gap-1">
+                  {COLS.map((col) => {
+                    const isTheSeat = row === seatRow && col === seatCol;
+
+                    if (isTheSeat && isAvailable) {
+                      return (
+                        <button
+                          key={col}
+                          onClick={handleBook}
+                          disabled={isBusy}
+                          title={`Seat ${row}${col} — Available`}
+                          className="h-5 w-5 rounded-t-md rounded-b-sm bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)] transition-all hover:bg-emerald-300 hover:shadow-[0_0_14px_rgba(52,211,153,0.9)] active:scale-90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-6 sm:w-6"
+                        />
+                      );
+                    }
+
+                    if (isTheSeat && !isAvailable) {
+                      return (
+                        <div
+                          key={col}
+                          title={`Seat ${row}${col} — Just booked`}
+                          className="h-5 w-5 rounded-t-md rounded-b-sm bg-red-700/80 sm:h-6 sm:w-6"
+                        />
+                      );
+                    }
+
+                    // Aisle gap between col 5 and 6
+                    return (
+                      <div
+                        key={col}
+                        title={`Seat ${row}${col} — Taken`}
+                        className={`h-5 w-5 rounded-t-md rounded-b-sm bg-gray-700/60 sm:h-6 sm:w-6 ${col === 6 ? "ml-2" : ""}`}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Legend */}
+          <div className="mt-4 flex justify-center gap-5 text-xs text-gray-600">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-t bg-gray-700/60" />
+              Taken
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-t bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" />
+              Available
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-t bg-red-700/80" />
+              Booked
+            </span>
           </div>
         </div>
 
         {/* Result card */}
         {result && (
           <div
-            className={`rounded-xl border-2 p-6 text-center transition-all ${
+            className={`rounded-xl border-2 p-5 text-center transition-all ${
               result.success
                 ? "border-emerald-500 bg-emerald-950/60"
                 : "border-red-800 bg-red-950/60"
@@ -123,8 +174,10 @@ export function CustomerView() {
           >
             {result.success ? (
               <>
-                <div className="text-5xl">🎉</div>
-                <div className="mt-2 text-xl font-bold text-emerald-400">You got it!</div>
+                <div className="text-4xl">🎬</div>
+                <div className="mt-2 text-lg font-bold text-emerald-400">
+                  Seat {seatLabel} is yours!
+                </div>
                 {mode === "fast" && (
                   <p className="mt-1 text-xs text-orange-400">
                     Fast mode — others may have also succeeded
@@ -133,13 +186,13 @@ export function CustomerView() {
               </>
             ) : (
               <>
-                <div className="text-5xl">😔</div>
-                <div className="mt-2 text-xl font-bold text-red-400">
+                <div className="text-4xl">😔</div>
+                <div className="mt-2 text-lg font-bold text-red-400">
                   {result.reason ?? "Someone else got it"}
                 </div>
                 {mode === "safe" && (
                   <p className="mt-1 text-xs text-gray-500">
-                    Safe mode — exactly one buyer wins. Fair and square.
+                    Safe mode — exactly one buyer wins.
                   </p>
                 )}
               </>
@@ -147,20 +200,23 @@ export function CustomerView() {
           </div>
         )}
 
-        {/* Buy button */}
+        {/* Book button */}
         <button
-          onClick={handleBuy}
-          disabled={isBusy}
-          className="w-full rounded-xl bg-indigo-600 py-6 text-2xl font-bold transition-all hover:bg-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={handleBook}
+          disabled={isBusy || !isAvailable}
+          className={`w-full rounded-xl py-5 text-xl font-bold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
+            isAvailable ? "bg-indigo-600 hover:bg-indigo-500" : "bg-gray-700"
+          }`}
         >
-          {buyPhase === "checking"
-            ? "🔍 Checking stock..."
-            : buyPhase === "processing"
-              ? "⏳ Processing..."
-              : "Buy Now"}
+          {bookPhase === "checking"
+            ? "🔍 Checking availability..."
+            : bookPhase === "processing"
+              ? "⏳ Booking seat..."
+              : isAvailable
+                ? `Book Seat ${seatLabel}`
+                : "Seat Taken"}
         </button>
 
-        {/* Customer identity */}
         {customerId && (
           <p className="text-center text-xs text-gray-700">
             You are:{" "}
