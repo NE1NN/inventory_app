@@ -131,7 +131,17 @@ exports.Prisma.PostScalarFieldEnum = {
 exports.Prisma.ItemScalarFieldEnum = {
   id: 'id',
   name: 'name',
-  stock: 'stock'
+  stock: 'stock',
+  mode: 'mode'
+};
+
+exports.Prisma.PurchaseScalarFieldEnum = {
+  id: 'id',
+  customerId: 'customerId',
+  success: 'success',
+  reason: 'reason',
+  mode: 'mode',
+  createdAt: 'createdAt'
 };
 
 exports.Prisma.SortOrder = {
@@ -144,10 +154,16 @@ exports.Prisma.QueryMode = {
   insensitive: 'insensitive'
 };
 
+exports.Prisma.NullsOrder = {
+  first: 'first',
+  last: 'last'
+};
+
 
 exports.Prisma.ModelName = {
   Post: 'Post',
-  Item: 'Item'
+  Item: 'Item',
+  Purchase: 'Purchase'
 };
 
 /**
