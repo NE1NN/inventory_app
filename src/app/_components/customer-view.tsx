@@ -60,7 +60,7 @@ export function CustomerView() {
   const seatRow = data?.row ?? "E";
   const seatCol = data?.col ?? 5;
   const isAvailable = data?.isAvailable ?? true;
-  const mode = data?.mode ?? "safe";
+  const mode = data?.mode ?? "latency";
   const isBusy = bookPhase !== "idle";
 
   const handleBook = async () => {
@@ -85,21 +85,17 @@ export function CustomerView() {
       <div className="mb-6 text-center">
         <span
           className={`rounded-full px-4 py-1.5 text-sm font-semibold ring-1 ${
-            mode === "fast"
+            mode === "latency"
               ? "bg-orange-500/20 text-orange-300 ring-orange-500/40"
-              : mode === "lock"
-                ? "bg-violet-500/20 text-violet-300 ring-violet-500/40"
-                : "bg-emerald-500/20 text-emerald-300 ring-emerald-500/40"
+              : "bg-violet-500/20 text-violet-300 ring-violet-500/40"
           }`}
         >
-          {mode === "fast" ? "⚡ Fast Mode" : mode === "lock" ? "🔐 Lock Mode" : "🔒 Safe Mode"}
+          {mode === "latency" ? "⚡ Prioritize Latency" : "🔐 Prioritize Consistency"}
         </span>
         <p className="mt-1.5 text-xs text-gray-600">
-          {mode === "fast"
+          {mode === "latency"
             ? "Race condition active — multiple buyers may succeed"
-            : mode === "lock"
-              ? "Exclusive lock — requests queue, only one wins"
-              : "Atomic guarantee — only one buyer will succeed"}
+            : "Exclusive lock — requests queue, only one wins"}
         </p>
       </div>
 
@@ -191,9 +187,9 @@ export function CustomerView() {
                 <div className="mt-2 text-lg font-bold text-emerald-400">
                   Seat {seatLabel} is yours!
                 </div>
-                {mode === "fast" && (
+                {mode === "latency" && (
                   <p className="mt-1 text-xs text-orange-400">
-                    Fast mode — others may have also succeeded
+                    Latency mode — others may have also succeeded
                   </p>
                 )}
               </>
@@ -203,9 +199,9 @@ export function CustomerView() {
                 <div className="mt-2 text-lg font-bold text-red-400">
                   {result.reason ?? "Someone else got it"}
                 </div>
-                {mode === "safe" && (
+                {mode === "consistency" && (
                   <p className="mt-1 text-xs text-gray-500">
-                    Safe mode — exactly one buyer wins.
+                    Consistency mode — exactly one buyer wins.
                   </p>
                 )}
               </>

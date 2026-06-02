@@ -12,7 +12,7 @@ export const inventoryRouter = createTRPCRouter({
       col: seat?.col ?? 5,
       isAvailable: seat?.isAvailable ?? true,
       bookedBy: seat?.bookedBy ?? null,
-      mode: (seat?.mode ?? "safe") as "fast" | "safe" | "lock",
+      mode: (seat?.mode ?? "latency") as "latency" | "consistency",
     };
   }),
 
@@ -31,11 +31,11 @@ export const inventoryRouter = createTRPCRouter({
         return { success: false, customerId: input.customerId, reason: "No seat found" };
       }
 
-      const mode = seat.mode as "fast" | "safe" | "lock";
+      const mode = seat.mode as "latency" | "consistency";
       let success = false;
       let reason: string | undefined;
 
-      if (mode === "fast") {
+      if (mode === "latency") {
         if (!seat.isAvailable) {
           reason = "Already booked";
         } else {
@@ -47,15 +47,6 @@ export const inventoryRouter = createTRPCRouter({
           });
           success = true;
         }
-      } else if (mode === "safe") {
-        // Single atomic UPDATE WHERE isAvailable = true — no race window.
-        const affected = await ctx.db.$executeRaw`
-          UPDATE "Seat"
-          SET "isAvailable" = false, "bookedBy" = ${input.customerId}
-          WHERE id = ${seat.id} AND "isAvailable" = true
-        `;
-        success = affected > 0;
-        if (!success) reason = "Already booked";
       } else {
         // Pessimistic lock: SELECT FOR UPDATE holds an exclusive row lock for the
         // entire transaction. Concurrent requests block at the SELECT and queue.
@@ -85,7 +76,7 @@ export const inventoryRouter = createTRPCRouter({
     }),
 
   setMode: publicProcedureRaw
-    .input(z.object({ mode: z.enum(["fast", "safe", "lock"]) }))
+    .input(z.object({ mode: z.enum(["latency", "consistency"]) }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.seat.upsert({
         where: { id: 1 },
@@ -99,7 +90,7 @@ export const inventoryRouter = createTRPCRouter({
     await ctx.db.seat.upsert({
       where: { id: 1 },
       update: { isAvailable: true, bookedBy: null },
-      create: { id: 1, label: "E5", row: "E", col: 5, isAvailable: true, mode: "safe" },
+      create: { id: 1, label: "E5", row: "E", col: 5, isAvailable: true, mode: "latency" },
     });
     await ctx.db.purchase.deleteMany();
     return { success: true };

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 
-type Mode = "fast" | "safe" | "lock";
+type Mode = "latency" | "consistency";
 
 export function AdminView() {
   const [customerUrl, setCustomerUrl] = useState("");
@@ -35,7 +35,7 @@ export function AdminView() {
 
   const isAvailable = seatData?.isAvailable ?? true;
   const seatLabel = seatData?.label ?? "E5";
-  const mode: Mode = seatData?.mode ?? "safe";
+  const mode: Mode = (seatData?.mode ?? "latency") as Mode;
 
   const successCount = purchases?.filter((p) => p.success).length ?? 0;
   const isOversold = successCount > 1;
@@ -78,27 +78,19 @@ export function AdminView() {
             </div>
             <div className="flex rounded-xl bg-gray-800 p-1">
               <ModeButton
-                label="⚡ Fast"
+                label="⚡ Latency"
                 sub="May oversell"
-                active={mode === "fast"}
+                active={mode === "latency"}
                 activeClass="bg-orange-500"
-                onClick={() => setModeMut.mutate({ mode: "fast" })}
+                onClick={() => setModeMut.mutate({ mode: "latency" })}
                 disabled={setModeMut.isPending}
               />
               <ModeButton
-                label="🔒 Safe"
-                sub="Atomic UPDATE"
-                active={mode === "safe"}
-                activeClass="bg-emerald-500"
-                onClick={() => setModeMut.mutate({ mode: "safe" })}
-                disabled={setModeMut.isPending}
-              />
-              <ModeButton
-                label="🔐 Lock"
+                label="🔐 Consistency"
                 sub="SELECT FOR UPDATE"
-                active={mode === "lock"}
+                active={mode === "consistency"}
                 activeClass="bg-violet-500"
-                onClick={() => setModeMut.mutate({ mode: "lock" })}
+                onClick={() => setModeMut.mutate({ mode: "consistency" })}
                 disabled={setModeMut.isPending}
               />
             </div>
@@ -152,12 +144,12 @@ export function AdminView() {
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
             Consistency vs Availability — what each mode trades
           </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <TradeoffCard
-              title="⚡ Fast Mode"
+              title="⚡ Prioritize Latency"
               titleColor="text-orange-400"
-              borderColor={mode === "fast" ? "border-orange-500" : "border-gray-800"}
-              bgColor={mode === "fast" ? "bg-orange-950/20" : "bg-gray-900"}
+              borderColor={mode === "latency" ? "border-orange-500" : "border-gray-800"}
+              bgColor={mode === "latency" ? "bg-orange-950/20" : "bg-gray-900"}
               metrics={[
                 { label: "Response Speed", value: 5, color: "orange" },
                 { label: "Data Integrity", value: 1, color: "orange" },
@@ -170,27 +162,10 @@ write false    ← both → oversold`}
               explanation="No coordination. Both requests read before either writes. Both pass the check and book — seat double-sold."
             />
             <TradeoffCard
-              title="🔒 Safe Mode"
-              titleColor="text-emerald-400"
-              borderColor={mode === "safe" ? "border-emerald-500" : "border-gray-800"}
-              bgColor={mode === "safe" ? "bg-emerald-950/20" : "bg-gray-900"}
-              metrics={[
-                { label: "Response Speed", value: 4, color: "emerald" },
-                { label: "Data Integrity", value: 5, color: "emerald" },
-              ]}
-              tag="Implicit lock"
-              tagColor="bg-emerald-900/50 text-emerald-400"
-              code={`UPDATE "Seat"
-  SET "isAvailable" = false
-  WHERE "isAvailable" = true
--- DB row lock, 1 stmt`}
-              explanation="Single atomic SQL statement. The DB acquires a row lock for just the UPDATE. Second request finds isAvailable = false — rejected."
-            />
-            <TradeoffCard
-              title="🔐 Lock Mode"
+              title="🔐 Prioritize Consistency"
               titleColor="text-violet-400"
-              borderColor={mode === "lock" ? "border-violet-500" : "border-gray-800"}
-              bgColor={mode === "lock" ? "bg-violet-950/20" : "bg-gray-900"}
+              borderColor={mode === "consistency" ? "border-violet-500" : "border-gray-800"}
+              bgColor={mode === "consistency" ? "bg-violet-950/20" : "bg-gray-900"}
               metrics={[
                 { label: "Response Speed", value: 3, color: "violet" },
                 { label: "Data Integrity", value: 5, color: "violet" },
@@ -238,14 +213,10 @@ COMMIT        ← unlock`}
                   <span className="min-w-0 truncate text-gray-300">{p.customerId}</span>
                   <span
                     className={`shrink-0 text-xs ${
-                      p.mode === "fast"
-                        ? "text-orange-400"
-                        : p.mode === "lock"
-                          ? "text-violet-400"
-                          : "text-emerald-400"
+                      p.mode === "latency" ? "text-orange-400" : "text-violet-400"
                     }`}
                   >
-                    {p.mode === "fast" ? "⚡ fast" : p.mode === "lock" ? "🔐 lock" : "🔒 safe"}
+                    {p.mode === "latency" ? "⚡ latency" : "🔐 consistency"}
                   </span>
                   <span className="ml-auto shrink-0 text-xs text-gray-600">
                     {new Date(p.createdAt).toLocaleTimeString()}
