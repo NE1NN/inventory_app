@@ -4,12 +4,15 @@ import { createTRPCRouter, publicProcedureRaw } from "@/server/api/trpc";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const inventoryRouter = createTRPCRouter({
-  getStock: publicProcedureRaw.query(async ({ ctx }) => {
-    const item = await ctx.db.item.findFirst();
+  getSeat: publicProcedureRaw.query(async ({ ctx }) => {
+    const seat = await ctx.db.seat.findFirst();
     return {
-      stock: item?.stock ?? 0,
-      name: item?.name ?? "Concert Ticket",
-      mode: (item?.mode ?? "safe") as "fast" | "safe" | "lock",
+      label: seat?.label ?? "E5",
+      row: seat?.row ?? "E",
+      col: seat?.col ?? 5,
+      isAvailable: seat?.isAvailable ?? true,
+      bookedBy: seat?.bookedBy ?? null,
+      mode: (seat?.mode ?? "latency") as "latency" | "consistency",
     };
   }),
 
@@ -20,58 +23,46 @@ export const inventoryRouter = createTRPCRouter({
     });
   }),
 
-  // Unified buy — reads mode from DB so admin controls strategy live.
-  buy: publicProcedureRaw
+  book: publicProcedureRaw
     .input(z.object({ customerId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const item = await ctx.db.item.findFirst();
-      if (!item) {
-        return { success: false, customerId: input.customerId, reason: "No item found" };
+      const seat = await ctx.db.seat.findFirst();
+      if (!seat) {
+        return { success: false, customerId: input.customerId, reason: "No seat found" };
       }
 
-      const mode = item.mode as "fast" | "safe" | "lock";
+      const mode = seat.mode as "latency" | "consistency";
       let success = false;
       let reason: string | undefined;
 
-      if (mode === "fast") {
-        if (item.stock <= 0) {
-          reason = "Out of stock";
+      if (mode === "latency") {
+        if (!seat.isAvailable) {
+          reason = "Already booked";
         } else {
           // Simulate processing gap — both users slip through if concurrent.
           await sleep(800);
-          await ctx.db.item.update({
-            where: { id: item.id },
-            data: { stock: { decrement: 1 } },
+          await ctx.db.seat.update({
+            where: { id: seat.id },
+            data: { isAvailable: false, bookedBy: input.customerId },
           });
           success = true;
         }
-      } else if (mode === "safe") {
-        // Single atomic UPDATE WHERE stock > 0 — no race window.
-        const affected = await ctx.db.$executeRaw`
-          UPDATE "Item"
-          SET stock = stock - 1
-          WHERE id = ${item.id} AND stock > 0
-        `;
-        success = affected > 0;
-        if (!success) reason = "Out of stock";
       } else {
         // Pessimistic lock: SELECT FOR UPDATE holds an exclusive row lock for the
-        // entire transaction. Concurrent requests block at the SELECT and queue —
-        // they only run after the current transaction commits.
+        // entire transaction. Concurrent requests block at the SELECT and queue.
         await ctx.db.$transaction(async (tx) => {
-          const rows = await tx.$queryRaw<{ id: number; stock: number }[]>`
-            SELECT id, stock FROM "Item" WHERE id = ${item.id} FOR UPDATE
+          const rows = await tx.$queryRaw<{ id: number; isAvailable: boolean }[]>`
+            SELECT id, "isAvailable" FROM "Seat" WHERE id = ${seat.id} FOR UPDATE
           `;
           const locked = rows[0];
-          if (!locked || locked.stock <= 0) {
-            reason = "Out of stock";
+          if (!locked || !locked.isAvailable) {
+            reason = "Already booked";
             return;
           }
-          // Sleep while holding the lock — the queue effect is visible here.
           await sleep(800);
-          await tx.item.update({
+          await tx.seat.update({
             where: { id: locked.id },
-            data: { stock: { decrement: 1 } },
+            data: { isAvailable: false, bookedBy: input.customerId },
           });
           success = true;
         });
@@ -85,25 +76,23 @@ export const inventoryRouter = createTRPCRouter({
     }),
 
   setMode: publicProcedureRaw
-    .input(z.object({ mode: z.enum(["fast", "safe", "lock"]) }))
+    .input(z.object({ mode: z.enum(["latency", "consistency"]) }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.item.upsert({
+      await ctx.db.seat.upsert({
         where: { id: 1 },
         update: { mode: input.mode },
-        create: { id: 1, name: "Concert Ticket", stock: 1, mode: input.mode },
+        create: { id: 1, label: "E5", row: "E", col: 5, isAvailable: true, mode: input.mode },
       });
       return { success: true };
     }),
 
-  reset: publicProcedureRaw
-    .input(z.object({ stock: z.number().int().min(1).max(10).optional().default(1) }))
-    .mutation(async ({ ctx, input }) => {
-      await ctx.db.item.upsert({
-        where: { id: 1 },
-        update: { stock: input.stock },
-        create: { id: 1, name: "Concert Ticket", stock: input.stock, mode: "safe" },
-      });
-      await ctx.db.purchase.deleteMany();
-      return { success: true };
-    }),
+  reset: publicProcedureRaw.mutation(async ({ ctx }) => {
+    await ctx.db.seat.upsert({
+      where: { id: 1 },
+      update: { isAvailable: true, bookedBy: null },
+      create: { id: 1, label: "E5", row: "E", col: 5, isAvailable: true, mode: "latency" },
+    });
+    await ctx.db.purchase.deleteMany();
+    return { success: true };
+  }),
 });

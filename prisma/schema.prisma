@@ -2,8 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-    provider = "prisma-client-js"
-    output   = "../generated/prisma"
+    provider      = "prisma-client-js"
+    output        = "../generated/prisma"
+    binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -11,20 +12,14 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-
-    @@index([name])
-}
-
-model Item {
-    id    Int    @id @default(autoincrement())
-    name  String @default("Concert Ticket")
-    stock Int    @default(1)
-    mode  String @default("safe")
+model Seat {
+    id          Int      @id @default(1)
+    label       String   @default("E5")
+    row         String   @default("E")
+    col         Int      @default(5)
+    isAvailable Boolean  @default(true)
+    bookedBy    String?
+    mode        String   @default("safe")
 }
 
 model Purchase {

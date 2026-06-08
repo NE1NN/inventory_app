@@ -4,17 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 
-type Mode = "fast" | "safe" | "lock";
+type Mode = "latency" | "consistency";
 
 export function AdminView() {
-  const [resetStock, setResetStock] = useState(1);
   const [customerUrl, setCustomerUrl] = useState("");
 
   useEffect(() => {
     setCustomerUrl(window.location.origin);
   }, []);
 
-  const { data: stockData, refetch: refetchStock } = api.inventory.getStock.useQuery(undefined, {
+  const { data: seatData, refetch: refetchSeat } = api.inventory.getSeat.useQuery(undefined, {
     refetchInterval: 1500,
   });
 
@@ -24,22 +23,22 @@ export function AdminView() {
   );
 
   const setModeMut = api.inventory.setMode.useMutation({
-    onSuccess: () => void refetchStock(),
+    onSuccess: () => void refetchSeat(),
   });
 
   const resetMut = api.inventory.reset.useMutation({
     onSuccess: () => {
-      void refetchStock();
+      void refetchSeat();
       void refetchPurchases();
     },
   });
 
-  const stock = stockData?.stock ?? 0;
-  const mode: Mode = stockData?.mode ?? "safe";
-  const isOversold = stock < 0;
+  const isAvailable = seatData?.isAvailable ?? true;
+  const seatLabel = seatData?.label ?? "E5";
+  const mode: Mode = (seatData?.mode ?? "latency") as Mode;
 
   const successCount = purchases?.filter((p) => p.success).length ?? 0;
-  const oversoldCount = Math.max(0, successCount - resetStock);
+  const isOversold = successCount > 1;
 
   return (
     <div className="min-h-screen bg-gray-950 p-6 text-white">
@@ -55,7 +54,7 @@ export function AdminView() {
             href="/"
             className="rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-400 hover:bg-gray-700 hover:text-white"
           >
-            Customer view →
+            Audience view →
           </Link>
         </div>
 
@@ -65,10 +64,12 @@ export function AdminView() {
             Share with audience
           </div>
           <div className="font-mono text-lg font-bold text-indigo-300">{customerUrl}/</div>
-          <div className="mt-1 text-xs text-gray-600">Have them open this on their phones and click Buy Now</div>
+          <div className="mt-1 text-xs text-gray-600">
+            Have them open this on their phones and tap Book Seat
+          </div>
         </div>
 
-        {/* Mode + Stock */}
+        {/* Mode + Seat status */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Mode toggle */}
           <div className="rounded-2xl border border-gray-800 bg-gray-900 p-5">
@@ -77,79 +78,60 @@ export function AdminView() {
             </div>
             <div className="flex rounded-xl bg-gray-800 p-1">
               <ModeButton
-                label="⚡ Fast"
+                label="⚡ Latency"
                 sub="May oversell"
-                active={mode === "fast"}
+                active={mode === "latency"}
                 activeClass="bg-orange-500"
-                onClick={() => setModeMut.mutate({ mode: "fast" })}
+                onClick={() => setModeMut.mutate({ mode: "latency" })}
                 disabled={setModeMut.isPending}
               />
               <ModeButton
-                label="🔒 Safe"
-                sub="Atomic UPDATE"
-                active={mode === "safe"}
-                activeClass="bg-emerald-500"
-                onClick={() => setModeMut.mutate({ mode: "safe" })}
-                disabled={setModeMut.isPending}
-              />
-              <ModeButton
-                label="🔐 Lock"
+                label="🔐 Consistency"
                 sub="SELECT FOR UPDATE"
-                active={mode === "lock"}
+                active={mode === "consistency"}
                 activeClass="bg-violet-500"
-                onClick={() => setModeMut.mutate({ mode: "lock" })}
+                onClick={() => setModeMut.mutate({ mode: "consistency" })}
                 disabled={setModeMut.isPending}
               />
             </div>
           </div>
 
-          {/* Stock counter */}
+          {/* Seat status */}
           <div
             className={`rounded-2xl border p-5 transition-all ${
               isOversold ? "border-red-500 bg-red-950/30" : "border-gray-800 bg-gray-900"
             }`}
           >
             <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-gray-500">
-              Current Stock
+              Seat {seatLabel}
             </div>
             <div
-              className={`text-8xl font-black leading-none ${
-                isOversold ? "text-red-400" : stock === 0 ? "text-gray-600" : "text-white"
+              className={`text-5xl font-black leading-none ${
+                isOversold
+                  ? "text-red-400"
+                  : isAvailable
+                    ? "text-emerald-400"
+                    : "text-gray-500"
               }`}
             >
-              {stock}
+              {isOversold ? "OVERSOLD" : isAvailable ? "Available" : "Booked"}
             </div>
             {isOversold && (
               <div className="mt-2 text-sm font-bold text-red-400">
-                ⚠️ OVERSOLD — {Math.abs(stock)} extra sold
+                ⚠️ {successCount} bookings for 1 seat
               </div>
             )}
-            {oversoldCount > 0 && !isOversold && (
-              <div className="mt-2 text-xs text-orange-400">{oversoldCount} oversell(s) this round</div>
+            {!isOversold && !isAvailable && successCount === 1 && (
+              <div className="mt-2 text-xs text-gray-500">1 booking — correct</div>
             )}
           </div>
         </div>
 
-        {/* Reset controls */}
+        {/* Reset */}
         <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4">
-          <span className="text-sm text-gray-400">Reset stock to:</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setResetStock((n) => Math.max(1, n - 1))}
-              className="rounded-lg bg-gray-700 px-3 py-1 font-mono text-lg hover:bg-gray-600"
-            >
-              −
-            </button>
-            <span className="w-8 text-center text-xl font-bold">{resetStock}</span>
-            <button
-              onClick={() => setResetStock((n) => Math.min(10, n + 1))}
-              className="rounded-lg bg-gray-700 px-3 py-1 font-mono text-lg hover:bg-gray-600"
-            >
-              +
-            </button>
-          </div>
+          <span className="text-sm text-gray-400">Ready for next round?</span>
           <button
-            onClick={() => resetMut.mutate({ stock: resetStock })}
+            onClick={() => resetMut.mutate()}
             disabled={resetMut.isPending}
             className="ml-auto rounded-lg bg-gray-700 px-5 py-2 text-sm font-semibold hover:bg-gray-600 disabled:opacity-50"
           >
@@ -162,55 +144,38 @@ export function AdminView() {
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
             Consistency vs Availability — what each mode trades
           </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <TradeoffCard
-              title="⚡ Fast Mode"
+              title="⚡ Prioritize Latency"
               titleColor="text-orange-400"
-              borderColor={mode === "fast" ? "border-orange-500" : "border-gray-800"}
-              bgColor={mode === "fast" ? "bg-orange-950/20" : "bg-gray-900"}
+              borderColor={mode === "latency" ? "border-orange-500" : "border-gray-800"}
+              bgColor={mode === "latency" ? "bg-orange-950/20" : "bg-gray-900"}
               metrics={[
                 { label: "Response Speed", value: 5, color: "orange" },
                 { label: "Data Integrity", value: 1, color: "orange" },
               ]}
               tag="No locking"
               tagColor="bg-orange-900/50 text-orange-400"
-              code={`read  stock = 1  ← A
-  ···delay···  ← B reads 1
-write stock-1  ← both → -1`}
-              explanation="No coordination. Both requests read before either writes. Both pass the check and decrement — stock goes negative."
+              code={`read  available=true  ← A
+  ···delay···  ← B reads true
+write false    ← both → oversold`}
+              explanation="No coordination. Both requests read before either writes. Both pass the check and book — seat double-sold."
             />
             <TradeoffCard
-              title="🔒 Safe Mode"
-              titleColor="text-emerald-400"
-              borderColor={mode === "safe" ? "border-emerald-500" : "border-gray-800"}
-              bgColor={mode === "safe" ? "bg-emerald-950/20" : "bg-gray-900"}
-              metrics={[
-                { label: "Response Speed", value: 4, color: "emerald" },
-                { label: "Data Integrity", value: 5, color: "emerald" },
-              ]}
-              tag="Implicit lock"
-              tagColor="bg-emerald-900/50 text-emerald-400"
-              code={`UPDATE item
-  SET stock = stock-1
-  WHERE stock > 0
--- DB row lock, 1 stmt`}
-              explanation="Single atomic SQL statement. The DB acquires a row lock for just the UPDATE. Second request finds stock = 0 — rejected."
-            />
-            <TradeoffCard
-              title="🔐 Lock Mode"
+              title="🔐 Prioritize Consistency"
               titleColor="text-violet-400"
-              borderColor={mode === "lock" ? "border-violet-500" : "border-gray-800"}
-              bgColor={mode === "lock" ? "bg-violet-950/20" : "bg-gray-900"}
+              borderColor={mode === "consistency" ? "border-violet-500" : "border-gray-800"}
+              bgColor={mode === "consistency" ? "bg-violet-950/20" : "bg-gray-900"}
               metrics={[
                 { label: "Response Speed", value: 3, color: "violet" },
                 { label: "Data Integrity", value: 5, color: "violet" },
               ]}
               tag="Explicit lock"
               tagColor="bg-violet-900/50 text-violet-400"
-              code={`SELECT * FROM item
+              code={`SELECT * FROM "Seat"
   FOR UPDATE  ← lock
   ...delay...
-UPDATE stock-1
+UPDATE false
 COMMIT        ← unlock`}
               explanation="Exclusive row lock held for the entire transaction. Concurrent requests block at SELECT FOR UPDATE and queue — they run serially."
             />
@@ -229,7 +194,7 @@ COMMIT        ← unlock`}
           </h2>
           {!purchases || purchases.length === 0 ? (
             <div className="rounded-xl border border-gray-800 bg-gray-900 p-10 text-center text-sm text-gray-600">
-              No purchases yet — share the customer URL and have the audience click Buy Now!
+              No bookings yet — share the audience URL and have them tap Book Seat!
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto rounded-xl border border-gray-800 bg-gray-900">
@@ -240,9 +205,7 @@ COMMIT        ← unlock`}
                 >
                   <span
                     className={`shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${
-                      p.success
-                        ? "bg-emerald-900 text-emerald-400"
-                        : "bg-red-900/60 text-red-400"
+                      p.success ? "bg-emerald-900 text-emerald-400" : "bg-red-900/60 text-red-400"
                     }`}
                   >
                     {p.success ? "✓ Booked" : "✗ Rejected"}
@@ -250,14 +213,10 @@ COMMIT        ← unlock`}
                   <span className="min-w-0 truncate text-gray-300">{p.customerId}</span>
                   <span
                     className={`shrink-0 text-xs ${
-                      p.mode === "fast"
-                        ? "text-orange-400"
-                        : p.mode === "lock"
-                          ? "text-violet-400"
-                          : "text-emerald-400"
+                      p.mode === "latency" ? "text-orange-400" : "text-violet-400"
                     }`}
                   >
-                    {p.mode === "fast" ? "⚡ fast" : p.mode === "lock" ? "🔐 lock" : "🔒 safe"}
+                    {p.mode === "latency" ? "⚡ latency" : "🔐 consistency"}
                   </span>
                   <span className="ml-auto shrink-0 text-xs text-gray-600">
                     {new Date(p.createdAt).toLocaleTimeString()}
@@ -358,7 +317,9 @@ function MetricBar({
     <div>
       <div className="mb-1 flex justify-between text-xs text-gray-500">
         <span>{label}</span>
-        <span>{value}/{max}</span>
+        <span>
+          {value}/{max}
+        </span>
       </div>
       <div className="flex gap-1">
         {Array.from({ length: max }).map((_, i) => (
