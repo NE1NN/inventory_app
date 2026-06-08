@@ -1,9 +1,7 @@
-import { postRouter } from "@/server/api/routers/post";
 import { inventoryRouter } from "@/server/api/routers/inventory";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 
 export const appRouter = createTRPCRouter({
-  post: postRouter,
   inventory: inventoryRouter,
 });
 
