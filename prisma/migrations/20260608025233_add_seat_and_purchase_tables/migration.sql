@@ -1,12 +1,3 @@
-/*
-  Warnings:
-
-  - You are about to drop the `Item` table. If the table is not empty, all the data it contains will be lost.
-
-*/
--- DropTable
-DROP TABLE "Item";
-
 -- CreateTable
 CREATE TABLE "Seat" (
     "id" INTEGER NOT NULL DEFAULT 1,
@@ -18,4 +9,16 @@ CREATE TABLE "Seat" (
     "mode" TEXT NOT NULL DEFAULT 'safe',
 
     CONSTRAINT "Seat_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Purchase" (
+    "id" SERIAL NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "success" BOOLEAN NOT NULL,
+    "reason" TEXT,
+    "mode" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Purchase_pkey" PRIMARY KEY ("id")
 );
