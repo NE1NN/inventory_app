@@ -55,7 +55,7 @@ export const inventoryRouter = createTRPCRouter({
             SELECT id, "isAvailable" FROM "Seat" WHERE id = ${seat.id} FOR UPDATE
           `;
           const locked = rows[0];
-          if (!locked || !locked.isAvailable) {
+          if (!locked?.isAvailable) {
             reason = "Already booked";
             return;
           }

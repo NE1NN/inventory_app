@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/trpc/react";
 
-type Mode = "latency" | "consistency";
 
 export function AdminView() {
   const [customerUrl, setCustomerUrl] = useState("");
@@ -35,7 +34,7 @@ export function AdminView() {
 
   const isAvailable = seatData?.isAvailable ?? true;
   const seatLabel = seatData?.label ?? "E5";
-  const mode: Mode = (seatData?.mode ?? "latency") as Mode;
+  const mode = seatData?.mode ?? "latency"
 
   const successCount = purchases?.filter((p) => p.success).length ?? 0;
   const isOversold = successCount > 1;
