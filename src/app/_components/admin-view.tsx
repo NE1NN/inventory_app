@@ -138,49 +138,6 @@ export function AdminView() {
           </button>
         </div>
 
-        {/* Trade-off section */}
-        <div>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
-            Consistency vs Availability — what each mode trades
-          </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <TradeoffCard
-              title="⚡ Prioritize Latency"
-              titleColor="text-orange-400"
-              borderColor={mode === "latency" ? "border-orange-500" : "border-gray-800"}
-              bgColor={mode === "latency" ? "bg-orange-950/20" : "bg-gray-900"}
-              metrics={[
-                { label: "Response Speed", value: 5, color: "orange" },
-                { label: "Data Integrity", value: 1, color: "orange" },
-              ]}
-              tag="No locking"
-              tagColor="bg-orange-900/50 text-orange-400"
-              code={`read  available=true  ← A
-  ···delay···  ← B reads true
-write false    ← both → oversold`}
-              explanation="No coordination. Both requests read before either writes. Both pass the check and book — seat double-sold."
-            />
-            <TradeoffCard
-              title="🔐 Prioritize Consistency"
-              titleColor="text-violet-400"
-              borderColor={mode === "consistency" ? "border-violet-500" : "border-gray-800"}
-              bgColor={mode === "consistency" ? "bg-violet-950/20" : "bg-gray-900"}
-              metrics={[
-                { label: "Response Speed", value: 3, color: "violet" },
-                { label: "Data Integrity", value: 5, color: "violet" },
-              ]}
-              tag="Explicit lock"
-              tagColor="bg-violet-900/50 text-violet-400"
-              code={`SELECT * FROM "Seat"
-  FOR UPDATE  ← lock
-  ...delay...
-UPDATE false
-COMMIT        ← unlock`}
-              explanation="Exclusive row lock held for the entire transaction. Concurrent requests block at SELECT FOR UPDATE and queue — they run serially."
-            />
-          </div>
-        </div>
-
         {/* Activity log */}
         <div>
           <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-gray-500">
@@ -256,78 +213,5 @@ function ModeButton({
       {label}
       <div className="mt-0.5 text-xs font-normal opacity-75">{sub}</div>
     </button>
-  );
-}
-
-function TradeoffCard({
-  title,
-  titleColor,
-  borderColor,
-  bgColor,
-  metrics,
-  tag,
-  tagColor,
-  code,
-  explanation,
-}: {
-  title: string;
-  titleColor: string;
-  borderColor: string;
-  bgColor: string;
-  metrics: { label: string; value: number; color: "orange" | "emerald" | "violet" }[];
-  tag: string;
-  tagColor: string;
-  code: string;
-  explanation: string;
-}) {
-  return (
-    <div className={`rounded-xl border p-5 transition-all ${borderColor} ${bgColor}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <span className={`font-bold ${titleColor}`}>{title}</span>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tagColor}`}>{tag}</span>
-      </div>
-      <div className="mb-4 space-y-2">
-        {metrics.map((m) => (
-          <MetricBar key={m.label} label={m.label} value={m.value} max={5} color={m.color} />
-        ))}
-      </div>
-      <pre className="mb-3 overflow-x-auto rounded-lg bg-gray-900/80 p-3 text-xs text-gray-400">
-        {code}
-      </pre>
-      <p className="text-xs text-gray-500">{explanation}</p>
-    </div>
-  );
-}
-
-function MetricBar({
-  label,
-  value,
-  max,
-  color,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  color: "orange" | "emerald" | "violet";
-}) {
-  const colorClass =
-    color === "orange" ? "bg-orange-500" : color === "violet" ? "bg-violet-500" : "bg-emerald-500";
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-xs text-gray-500">
-        <span>{label}</span>
-        <span>
-          {value}/{max}
-        </span>
-      </div>
-      <div className="flex gap-1">
-        {Array.from({ length: max }).map((_, i) => (
-          <div
-            key={i}
-            className={`h-2 flex-1 rounded-full transition-all ${i < value ? colorClass : "bg-gray-700"}`}
-          />
-        ))}
-      </div>
-    </div>
   );
 }
